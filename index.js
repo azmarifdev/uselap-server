@@ -31,11 +31,8 @@ async function run() {
         const bookingsCollection = client
             .db('uselap-db')
             .collection('bookings');
-        
-        const paymentCollection = client
-            .db('uselap-db')
-            .collection('payment');
-        
+
+        const paymentCollection = client.db('uselap-db').collection('payment');
 
         app.get('/jwt', async (req, res) => {
             const email = req.query.email;
@@ -63,11 +60,12 @@ async function run() {
         // ..............get category products...................
 
         app.get('/categories-data/:category', async (req, res) => {
+            
             const category = req.params.category;
-            // console.log(category);
-            const filter = { category: category };
-            // console.log(filter);
-            const result = await productsCollection.find(filter).toArray();
+            const query = {
+                $and: [{ category: category }, { status: 'available' }],
+            };
+            const result = await productsCollection.find(query).toArray();
             res.send(result);
             // console.log(result);
         });
@@ -129,8 +127,6 @@ async function run() {
             res.send(booking);
         });
 
-        
-
         app.post('/create-payment-intent', async (req, res) => {
             const payment = req.body;
             const price = payment.price;
@@ -145,7 +141,6 @@ async function run() {
                 clientSecret: paymentIntent.client_secret,
             });
         });
-
 
         app.post('/payments', async (req, res) => {
             const payment = req.body;
@@ -162,11 +157,22 @@ async function run() {
                 filter,
                 updatedDoc,
             );
+
+            const productId = req.body.productId;
+            const query = { _id: ObjectId(productId) };
+            const updatedProduct = {
+                $set: {
+                    status: 'sold',
+                    advertise: false,
+                },
+            };
+            const updatedProductResult = await productsCollection.updateOne(
+                query,
+                updatedProduct,
+            );
+
             res.send(result);
         });
-
-
-
 
         // ================
         app.delete('/bookings/:id', async (req, res) => {
