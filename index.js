@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
+const stripe = require('stripe')(process.env.STRIPE_SECRET);
 const jwt = require('jsonwebtoken');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const app = express();
@@ -30,6 +31,11 @@ async function run() {
         const bookingsCollection = client
             .db('uselap-db')
             .collection('bookings');
+        
+        const paymentCollection = client
+            .db('uselap-db')
+            .collection('payment');
+        
 
         app.get('/jwt', async (req, res) => {
             const email = req.query.email;
@@ -121,8 +127,47 @@ async function run() {
             const query = { _id: ObjectId(id) };
             const booking = await bookingsCollection.findOne(query);
             res.send(booking);
-            
         });
+
+        
+
+        app.post('/create-payment-intent', async (req, res) => {
+            const payment = req.body;
+            const price = payment.price;
+            const amount = price * 100;
+
+            const paymentIntent = await stripe.paymentIntents.create({
+                currency: 'usd',
+                amount: amount,
+                payment_method_types: ['card'],
+            });
+            res.send({
+                clientSecret: paymentIntent.client_secret,
+            });
+        });
+
+
+        app.post('/payments', async (req, res) => {
+            const payment = req.body;
+            const result = await paymentCollection.insertOne(payment);
+            const id = payment.bookingId;
+            const filter = { _id: ObjectId(id) };
+            const updatedDoc = {
+                $set: {
+                    paid: true,
+                    transitionId: payment.transitionId,
+                },
+            };
+            const updatedResult = await bookingsCollection.updateOne(
+                filter,
+                updatedDoc,
+            );
+            res.send(result);
+        });
+
+
+
+
         // ================
         app.delete('/bookings/:id', async (req, res) => {
             const id = req.params.id;
