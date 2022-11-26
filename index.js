@@ -20,10 +20,16 @@ const client = new MongoClient(uri, {
 
 async function run() {
     try {
-        const catagoriesCollection = client.db('uselap-db').collection('catagories');
+        const catagoriesCollection = client
+            .db('uselap-db')
+            .collection('catagories');
         const usersCollection = client.db('uselap-db').collection('users');
-        const productsCollection = client.db('uselap-db').collection('products');
-        const bookingsCollection = client.db('uselap-db').collection('bookings');
+        const productsCollection = client
+            .db('uselap-db')
+            .collection('products');
+        const bookingsCollection = client
+            .db('uselap-db')
+            .collection('bookings');
 
         app.get('/jwt', async (req, res) => {
             const email = req.query.email;
@@ -43,25 +49,21 @@ async function run() {
             res.send(result);
         });
 
-        
         app.get('/products', async (req, res) => {
             const result = await productsCollection.find({}).toArray();
             res.send(result);
         });
-        
-        
-
 
         // ..............get category products...................
 
         app.get('/categories-data/:category', async (req, res) => {
             const category = req.params.category;
-            console.log(category);
+            // console.log(category);
             const filter = { category: category };
-            console.log(filter);
+            // console.log(filter);
             const result = await productsCollection.find(filter).toArray();
             res.send(result);
-            console.log(result);
+            // console.log(result);
         });
 
         // check role
@@ -73,11 +75,10 @@ async function run() {
             // console.log(result)
         });
 
-        app.get('/users', async (req, res) =>
-        {
-            const result = await usersCollection.find({}).toArray()
-            res.send(result)
-        })
+        app.get('/users', async (req, res) => {
+            const result = await usersCollection.find({}).toArray();
+            res.send(result);
+        });
 
         app.post('/users', async (req, res) => {
             const user = req.body;
@@ -94,7 +95,7 @@ async function run() {
         app.get('/products/:email', async (req, res) => {
             const email = req.params.email;
             const query = { email: email };
-            const result = await productsCollection.find(query).toArray()
+            const result = await productsCollection.find(query).toArray();
             res.send(result);
             // console.log(result);
         });
@@ -104,38 +105,44 @@ async function run() {
             const products = await bookingsCollection.insertOne(product);
             res.send(products);
         });
-  
-        app.get('/bookings/:email', async (req, res) =>
-        {
-            const email = req.params.email
-            const query = { email: email }
-            console.log(query)
-            const result = await bookingsCollection.find(query).toArray()
-            res.send(result)
-        })
 
-        app.delete('/bookings/:id', async (req, res) =>
-        {
-            const id = req.params.id
-            const query = { _id: ObjectId(id) }
-            const result = await bookingsCollection.deleteOne(query)
-            res.send(result)
-        })
- 
-        app.delete('/products/:id', async (req, res) =>
-        {
-            const id = req.params.id
-            const query = { _id: ObjectId(id) }
-            const result = await productsCollection.deleteOne(query)
-            res.send(result)
+        app.get('/bookings/:email', async (req, res) => {
+            const email = req.params.email;
+            const query = { email: email };
+            // console.log(query);
+            const result = await bookingsCollection.find(query).toArray();
+            res.send(result);
         });
 
-        app.get('/buyers', async (req, res) =>
-        {
-            const filter = { role: 'Buyer' }
-            const result = await usersCollection.find(filter).toArray()
-            res.send(result)
-        })
+        // payment ==================================
+        app.get('/booking/:id', async (req, res) => {
+            const id = req.params.id;
+            console.log(id);
+            const query = { _id: ObjectId(id) };
+            const booking = await bookingsCollection.findOne(query);
+            res.send(booking);
+            
+        });
+        // ================
+        app.delete('/bookings/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: ObjectId(id) };
+            const result = await bookingsCollection.deleteOne(query);
+            res.send(result);
+        });
+
+        app.delete('/products/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: ObjectId(id) };
+            const result = await productsCollection.deleteOne(query);
+            res.send(result);
+        });
+
+        app.get('/buyers', async (req, res) => {
+            const filter = { role: 'Buyer' };
+            const result = await usersCollection.find(filter).toArray();
+            res.send(result);
+        });
 
         app.delete('/buyers/:id', async (req, res) => {
             const id = req.params.id;
@@ -143,12 +150,11 @@ async function run() {
             const result = await usersCollection.deleteOne(query);
             res.send(result);
         });
-        app.get('/sellers', async (req, res) =>
-        {
-            const filter = { role: 'Seller' }
-            const result = await usersCollection.find(filter).toArray()
-            res.send(result)
-        })
+        app.get('/sellers', async (req, res) => {
+            const filter = { role: 'Seller' };
+            const result = await usersCollection.find(filter).toArray();
+            res.send(result);
+        });
 
         app.delete('/sellers/:id', async (req, res) => {
             const id = req.params.id;
@@ -156,12 +162,11 @@ async function run() {
             const result = await usersCollection.deleteOne(query);
             res.send(result);
         });
-        
-        app.get('/allProducts', async (req, res) =>
-        {
-            const result = await productsCollection.find({}).toArray()
-            res.send(result)
-        })
+
+        app.get('/allProducts', async (req, res) => {
+            const result = await productsCollection.find({}).toArray();
+            res.send(result);
+        });
 
         app.delete('/allProducts/:id', async (req, res) => {
             const id = req.params.id;
@@ -169,7 +174,6 @@ async function run() {
             const result = await productsCollection.deleteOne(query);
             res.send(result);
         });
-
 
         console.log('Database Connected...');
     } finally {
