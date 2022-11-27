@@ -25,15 +25,11 @@ async function run() {
             .db('uselap-db')
             .collection('catagories');
         const usersCollection = client.db('uselap-db').collection('users');
-        const productsCollection = client
-            .db('uselap-db')
-            .collection('products');
-        const bookingsCollection = client
-            .db('uselap-db')
-            .collection('bookings');
-
+        const productsCollection = client.db('uselap-db').collection('products');
+        const bookingsCollection = client.db('uselap-db').collection('bookings');
         const paymentCollection = client.db('uselap-db').collection('payment');
 
+        // jwt for sign up and login
         app.get('/jwt', async (req, res) => {
             const email = req.query.email;
             const query = { email: email };
@@ -47,20 +43,20 @@ async function run() {
             res.status(403).send({ accessToken: '' });
         });
 
+        // home categories show
         app.get('/category', async (req, res) => {
             const result = await catagoriesCollection.find({}).toArray();
             res.send(result);
         });
 
+        // seller my product 
         app.get('/products', async (req, res) => {
             const result = await productsCollection.find({}).toArray();
             res.send(result);
         });
 
-        // ..............get category products...................
-
+        // get category products
         app.get('/categories-data/:category', async (req, res) => {
-            
             const category = req.params.category;
             const query = {
                 $and: [{ category: category }, { status: 'available' }],
@@ -104,6 +100,37 @@ async function run() {
             // console.log(result);
         });
 
+        app.patch('/report-item/:id', async (req, res) => {
+            const id = req.params.id;
+            const filter = { _id: ObjectId(id) };
+            const options = { upsert: true };
+            const updateDoc = {
+                $set: {
+                    report: 'true',
+                },
+            };
+            const result = await productsCollection.updateOne(
+                filter,
+                updateDoc,
+                options,
+            );
+            res.send(result);
+        });
+
+        app.get('/report-item', async (req, res) => {
+            const report = req.query.report;
+            const filter = { report: report };
+            const result = await productsCollection.find(filter).toArray();
+            res.send(result);
+        });
+
+        app.delete('/reportItem/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: ObjectId(id) };
+            const result = await productsCollection.deleteOne(query);
+            res.send(result);
+        });
+
         app.post('/bookings', async (req, res) => {
             const product = req.body;
             const products = await bookingsCollection.insertOne(product);
@@ -121,7 +148,7 @@ async function run() {
         // payment ==================================
         app.get('/booking/:id', async (req, res) => {
             const id = req.params.id;
-            console.log(id);
+            console.l/og(id);
             const query = { _id: ObjectId(id) };
             const booking = await bookingsCollection.findOne(query);
             res.send(booking);
