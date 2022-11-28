@@ -19,6 +19,30 @@ const client = new MongoClient(uri, {
     serverApi: ServerApiVersion.v1,
 });
 
+
+
+// function verifyJWT(req, res, next) {
+//     const authHeader = req.headers.authorization;
+//     if (!authHeader) {
+//         return res.status(401).send('unauthorized access');
+//     }
+
+//     const token = authHeader.split(' ')[1];
+
+//     jwt.verify(token, process.env.ACCESS_TOKEN, function (err, decoded) {
+//         if (err) {
+//             return res.status(403).send({ message: 'forbidden access' });
+//         }
+//         req.decoded = decoded;
+//         next();
+//     });
+// }
+
+
+
+
+
+
 async function run() {
     try {
         const catagoriesCollection = client
@@ -77,6 +101,30 @@ async function run() {
             const result = await usersCollection.findOne(query);
             res.send(result);
             // console.log(result)
+        });
+
+        app.put('/users/verified/:id', async (req, res) => {
+            // const decodedEmail = req.decoded.email;
+            // const query = { email: decodedEmail };
+            // const user = await usersCollection.findOne(query);
+            // if (user?.role !== 'admin') {
+            //     return res.status(403).send({ message: 'forbidden access' });
+            // }
+            const id = req.params.id;
+            const filter = { _id: ObjectId(id) };
+            const options = { upsert: true };
+            const updatedDoc = {
+                $set: {
+                    checked: 'verified',
+                },
+            };
+
+            const result = await usersCollection.updateOne(
+                filter,
+                updatedDoc,
+                options,
+            );
+            res.send(result);
         });
 
         app.get('/users', async (req, res) => {
@@ -158,7 +206,10 @@ async function run() {
 
         app.get('/advertise', async (req, res) => {
             const filter = { advertise: true };
-            const result = await productsCollection.find(filter).sort({ "$natural": -1 }).toArray();
+            const result = await productsCollection
+                .find(filter)
+                .sort({ $natural: -1 })
+                .toArray();
             res.send(result);
         });
 
