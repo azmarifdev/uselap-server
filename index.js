@@ -1,9 +1,9 @@
 const express = require('express');
 const cors = require('cors');
-require('dotenv').config();
-const stripe = require('stripe')(process.env.STRIPE_SECRET);
 const jwt = require('jsonwebtoken');
+const stripe = require('stripe')(process.env.STRIPE_SECRET);
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+require('dotenv').config();
 const app = express();
 const port = process.env.PORT || 7000;
 
@@ -19,29 +19,22 @@ const client = new MongoClient(uri, {
     serverApi: ServerApiVersion.v1,
 });
 
+function verifyJWT(req, res, next) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+        return res.status(401).send('unauthorized access');
+    }
 
+    const token = authHeader.split(' ')[1];
 
-// function verifyJWT(req, res, next) {
-//     const authHeader = req.headers.authorization;
-//     if (!authHeader) {
-//         return res.status(401).send('unauthorized access');
-//     }
-
-//     const token = authHeader.split(' ')[1];
-
-//     jwt.verify(token, process.env.ACCESS_TOKEN, function (err, decoded) {
-//         if (err) {
-//             return res.status(403).send({ message: 'forbidden access' });
-//         }
-//         req.decoded = decoded;
-//         next();
-//     });
-// }
-
-
-
-
-
+    jwt.verify(token, process.env.ACCESS_TOKEN, function (err, decoded) {
+        if (err) {
+            return res.status(403).send({ message: 'forbidden access' });
+        }
+        req.decoded = decoded;
+        next();
+    });
+}
 
 async function run() {
     try {
@@ -95,9 +88,10 @@ async function run() {
         });
 
         // check role
-        app.get('/users/:email', async (req, res) => {
-            const email = req.params.email;
-            const query = { email: email };
+        app.get('/users/:email', async (req, res) =>
+        {
+            const userEmail = req.params.email;
+            const query = { email: userEmail };
             const result = await usersCollection.findOne(query);
             res.send(result);
             // console.log(result)
