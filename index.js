@@ -4,7 +4,7 @@ require('dotenv').config();
 const jwt = require('jsonwebtoken');
 const stripe = require('stripe')(process.env.STRIPE_SECRET);
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
-const app = express(); 
+const app = express();
 const port = process.env.PORT || 7000;
 
 // middleWares
@@ -88,8 +88,7 @@ async function run() {
         });
 
         // check role
-        app.get('/users/:email', async (req, res) =>
-        {
+        app.get('/users/:email', async (req, res) => {
             const userEmail = req.params.email;
             const query = { email: userEmail };
             const result = await usersCollection.findOne(query);
