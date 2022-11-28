@@ -96,6 +96,7 @@ async function run() {
             // console.log(result)
         });
 
+        // verified tick
         app.put('/users/verified/:id', async (req, res) => {
             // const decodedEmail = req.decoded.email;
             // const query = { email: decodedEmail };
