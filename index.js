@@ -104,8 +104,6 @@ async function run() {
             res.send(result);
             // console.log(result)
         });
-
-        // verified tick
         // app.put('/users/verified/:id', async (req, res) => {
 
         //     const id = req.params.id;
