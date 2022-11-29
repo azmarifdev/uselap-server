@@ -19,6 +19,7 @@ const client = new MongoClient(uri, {
     serverApi: ServerApiVersion.v1,
 });
 
+// jwt3
 function verifyJWT(req, res, next) {
     const authHeader = req.headers.authorization;
     if (!authHeader) {
@@ -71,10 +72,10 @@ async function run() {
         });
 
         // seller my product
-        app.get('/products', async (req, res) => {
-            const result = await productsCollection.find({}).toArray();
-            res.send(result);
-        });
+        // app.get('/products', async (req, res) => {
+        //     const result = await productsCollection.find({}).toArray();
+        //     res.send(result);
+        // });
 
         // get category products
         app.get('/categories-data/:category', async (req, res) => {
@@ -121,7 +122,7 @@ async function run() {
             res.send(result);
         });
 
-        app.get('/users', async (req, res) => {
+        app.get('/users', verifyJWT, async (req, res) => {
             const result = await usersCollection.find({}).toArray();
             res.send(result);
         });
@@ -138,8 +139,15 @@ async function run() {
             res.send(products);
         });
 
-        app.get('/products/:email', async (req, res) => {
+        app.get('/products/:email', verifyJWT, async (req, res) => {
             const email = req.params.email;
+            console.log(req.headers.authorization);
+
+            // decoded from jwt sign login signup function (jwt2)
+            const decodedEmail = req.decoded.email;
+            if (email !== decodedEmail) {
+                return res.status(403).send({ message: 'forbidden access' });
+            }
             const query = { email: email };
             const result = await productsCollection.find(query).toArray();
             res.send(result);
@@ -163,7 +171,7 @@ async function run() {
             res.send(result);
         });
 
-        app.get('/report-item', async (req, res) => {
+        app.get('/report-item', verifyJWT, async (req, res) => {
             const report = req.query.report;
             const filter = { report: report };
             const result = await productsCollection.find(filter).toArray();
@@ -213,8 +221,12 @@ async function run() {
             res.send(products);
         });
 
-        app.get('/bookings/:email', async (req, res) => {
+        app.get('/bookings/:email', verifyJWT, async (req, res) => {
             const email = req.params.email;
+            const decodedEmail = req.decoded.email;
+            if (email !== decodedEmail) {
+                return res.status(403).send({ message: 'forbidden access' });
+            }
             const query = { email: email };
             // console.log(query);
             const result = await bookingsCollection.find(query).toArray();
@@ -292,7 +304,7 @@ async function run() {
             res.send(result);
         });
 
-        app.get('/buyers', async (req, res) => {
+        app.get('/buyers', verifyJWT, async (req, res) => {
             const filter = { role: 'Buyer' };
             const result = await usersCollection.find(filter).toArray();
             res.send(result);
@@ -304,7 +316,7 @@ async function run() {
             const result = await usersCollection.deleteOne(query);
             res.send(result);
         });
-        app.get('/sellers', async (req, res) => {
+        app.get('/sellers', verifyJWT, async (req, res) => {
             const filter = { role: 'Seller' };
             const result = await usersCollection.find(filter).toArray();
             res.send(result);
@@ -317,7 +329,7 @@ async function run() {
             res.send(result);
         });
 
-        app.get('/allProducts', async (req, res) => {
+        app.get('/allProducts', verifyJWT, async (req, res) => {
             const result = await productsCollection.find({}).toArray();
             res.send(result);
         });
