@@ -8,7 +8,16 @@ const app = express();
 const port = process.env.PORT || 7000;
 
 // middleWares
-app.use(cors());
+// app.use(cors());
+
+const cors = require('cors');
+const corsOptions = {
+    origin: '*',
+    credentials: true,
+    optionSuccessStatus: 200,
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // Database Connection
@@ -105,6 +114,7 @@ async function run() {
             // if (user?.role !== 'admin') {
             //     return res.status(403).send({ message: 'forbidden access' });
             // }
+
             const id = req.params.id;
             const filter = { _id: ObjectId(id) };
             const options = { upsert: true };
@@ -141,7 +151,7 @@ async function run() {
 
         app.get('/products/:email', verifyJWT, async (req, res) => {
             const email = req.params.email;
-            console.log(req.headers.authorization);
+            // console.log(req.headers.authorization);
 
             // decoded from jwt sign login signup function (jwt2)
             const decodedEmail = req.decoded.email;
