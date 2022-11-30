@@ -79,12 +79,6 @@ async function run() {
             res.send(result);
         });
 
-        // seller my product
-        // app.get('/products', async (req, res) => {
-        //     const result = await productsCollection.find({}).toArray();
-        //     res.send(result);
-        // });
-
         // get category products
         app.get('/categories-data/:category', async (req, res) => {
             const category = req.params.category;
