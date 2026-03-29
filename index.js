@@ -19,11 +19,42 @@ const app = express();
 const port = process.env.PORT || 7000;
 const dbName = process.env.DB_NAME || 'uselap-db';
 const isProduction = process.env.NODE_ENV === 'production';
-const allowedOrigins = (process.env.CORS_ORIGINS || '')
+const configuredOrigins = (process.env.CORS_ORIGINS || '')
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
-const allowAnyOrigin = !isProduction && allowedOrigins.length === 0;
+const allowAnyOrigin = !isProduction && configuredOrigins.length === 0;
+
+function normalizeOrigin(value) {
+    return value ? value.trim().replace(/\/+$/, '') : '';
+}
+
+function isOriginAllowed(requestOrigin, allowedList) {
+    const normalizedRequestOrigin = normalizeOrigin(requestOrigin);
+    if (!normalizedRequestOrigin) {
+        return false;
+    }
+
+    return allowedList.some((entry) => {
+        const normalizedEntry = normalizeOrigin(entry);
+        if (!normalizedEntry) {
+            return false;
+        }
+
+        // Supports exact match and wildcard subdomain patterns like https://*.vercel.app
+        if (normalizedEntry.includes('*')) {
+            const wildcardPattern = new RegExp(
+                `^${normalizedEntry
+                    .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+                    .replace(/\\\*/g, '.*')}$`,
+                'i',
+            );
+            return wildcardPattern.test(normalizedRequestOrigin);
+        }
+
+        return normalizedEntry.toLowerCase() === normalizedRequestOrigin.toLowerCase();
+    });
+}
 
 const corsOptions = {
     origin: (origin, callback) => {
@@ -31,7 +62,7 @@ const corsOptions = {
             return callback(null, true);
         }
 
-        if (allowAnyOrigin || allowedOrigins.includes(origin)) {
+        if (allowAnyOrigin || isOriginAllowed(origin, configuredOrigins)) {
             return callback(null, true);
         }
 
@@ -45,6 +76,7 @@ app.set('trust proxy', 1);
 app.use(helmet());
 app.use(compression());
 app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 app.use(express.json({ limit: process.env.BODY_LIMIT || '1mb' }));
 app.use(
     rateLimit({
@@ -505,6 +537,7 @@ app.use((req, res) => {
 
 app.use((error, req, res, next) => {
     if (error.message === 'Not allowed by CORS') {
+        console.warn(`CORS blocked origin: ${req.headers.origin || 'unknown'}`);
         return res.status(403).send({ message: 'cors blocked for this origin' });
     }
 
