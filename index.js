@@ -92,6 +92,8 @@ const uri = process.env.DB_URI;
 const client = new MongoClient(uri, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 10000,
+    connectTimeoutMS: 10000,
     serverApi: ServerApiVersion.v1,
 });
 
@@ -124,6 +126,8 @@ function verifyJWT(req, res, next) {
 
 async function run() {
     try {
+        await client.connect();
+
         const catagoriesCollection = client
             .db(dbName)
             .collection('catagories');
