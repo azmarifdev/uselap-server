@@ -1,23 +1,59 @@
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const compression = require('compression');
+const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 const jwt = require('jsonwebtoken');
-const stripe = require('stripe')(process.env.STRIPE_SECRET);
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
+
+const requiredEnv = ['DB_URI', 'ACCESS_TOKEN', 'STRIPE_SECRET'];
+const missingEnv = requiredEnv.filter((key) => !process.env[key]);
+if (missingEnv.length) {
+    console.error(`Missing required env: ${missingEnv.join(', ')}`);
+    process.exit(1);
+}
+
+const stripe = require('stripe')(process.env.STRIPE_SECRET);
 const app = express();
 const port = process.env.PORT || 7000;
-
-// middleWares
-// app.use(cors());
+const dbName = process.env.DB_NAME || 'uselap-db';
+const isProduction = process.env.NODE_ENV === 'production';
+const allowedOrigins = (process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+const allowAnyOrigin = !isProduction && allowedOrigins.length === 0;
 
 const corsOptions = {
-    origin: '*',
+    origin: (origin, callback) => {
+        if (!origin) {
+            return callback(null, true);
+        }
+
+        if (allowAnyOrigin || allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+
+        return callback(new Error('Not allowed by CORS'));
+    },
     credentials: true,
-    optionSuccessStatus: 200,
+    optionsSuccessStatus: 200,
 };
 
+app.set('trust proxy', 1);
+app.use(helmet());
+app.use(compression());
 app.use(cors(corsOptions));
-app.use(express.json());
+app.use(express.json({ limit: process.env.BODY_LIMIT || '1mb' }));
+app.use(
+    rateLimit({
+        windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000),
+        max: Number(process.env.RATE_LIMIT_MAX || 300),
+        standardHeaders: true,
+        legacyHeaders: false,
+    }),
+);
 
 // Database Connection
 const uri = process.env.DB_URI;
@@ -27,14 +63,23 @@ const client = new MongoClient(uri, {
     serverApi: ServerApiVersion.v1,
 });
 
-// jwt3
+function parseObjectId(id) {
+    if (!ObjectId.isValid(id)) {
+        return null;
+    }
+    return new ObjectId(id);
+}
+
 function verifyJWT(req, res, next) {
     const authHeader = req.headers.authorization;
     if (!authHeader) {
-        return res.status(401).send('unauthorized access');
+        return res.status(401).send({ message: 'unauthorized access' });
     }
 
-    const token = authHeader.split(' ')[1];
+    const [scheme, token] = authHeader.split(' ');
+    if (scheme?.toLowerCase() !== 'bearer' || !token) {
+        return res.status(401).send({ message: 'invalid authorization header' });
+    }
 
     jwt.verify(token, process.env.ACCESS_TOKEN, function (err, decoded) {
         if (err) {
@@ -48,20 +93,23 @@ function verifyJWT(req, res, next) {
 async function run() {
     try {
         const catagoriesCollection = client
-            .db('uselap-db')
+            .db(dbName)
             .collection('catagories');
-        const usersCollection = client.db('uselap-db').collection('users');
+        const usersCollection = client.db(dbName).collection('users');
         const productsCollection = client
-            .db('uselap-db')
+            .db(dbName)
             .collection('products');
         const bookingsCollection = client
-            .db('uselap-db')
+            .db(dbName)
             .collection('bookings');
-        const paymentCollection = client.db('uselap-db').collection('payment');
+        const paymentCollection = client.db(dbName).collection('payment');
 
         // jwt for sign up and login
         app.get('/jwt', async (req, res) => {
             const email = req.query.email;
+            if (!email) {
+                return res.status(400).send({ message: 'email is required' });
+            }
             const query = { email: email };
             const user = await usersCollection.findOne(query);
             if (user) {
@@ -151,7 +199,11 @@ async function run() {
 
         app.patch('/report-item/:id', async (req, res) => {
             const id = req.params.id;
-            const filter = { _id: ObjectId(id) };
+            const objectId = parseObjectId(id);
+            if (!objectId) {
+                return res.status(400).send({ message: 'invalid id' });
+            }
+            const filter = { _id: objectId };
             const options = { upsert: true };
             const updateDoc = {
                 $set: {
@@ -173,17 +225,24 @@ async function run() {
             res.send(result);
         });
 
-        app.delete('/reportItem/:id', async (req, res) => {
+        app.delete('/reportItem/:id', verifyJWT, async (req, res) => {
             const id = req.params.id;
-            const query = { _id: ObjectId(id) };
+            const objectId = parseObjectId(id);
+            if (!objectId) {
+                return res.status(400).send({ message: 'invalid id' });
+            }
+            const query = { _id: objectId };
             const result = await productsCollection.deleteOne(query);
             res.send(result);
         });
 
         app.patch('/advertise/:id', async (req, res) => {
             const id = req.params.id;
-            // console.log(id);
-            const filter = { _id: ObjectId(id) };
+            const objectId = parseObjectId(id);
+            if (!objectId) {
+                return res.status(400).send({ message: 'invalid id' });
+            }
+            const filter = { _id: objectId };
             const options = { upsert: true };
             // const updateDoc = {
             //     $set: {
@@ -210,8 +269,11 @@ async function run() {
             res.send(result);
         });
 
-        app.post('/bookings', async (req, res) => {
+        app.post('/bookings', verifyJWT, async (req, res) => {
             const product = req.body;
+            if (!product?.email || product.email !== req.decoded.email) {
+                return res.status(403).send({ message: 'forbidden access' });
+            }
             const products = await bookingsCollection.insertOne(product);
             res.send(products);
         });
@@ -229,18 +291,30 @@ async function run() {
         });
 
         // payment ==================================
-        app.get('/booking/:id', async (req, res) => {
+        app.get('/booking/:id', verifyJWT, async (req, res) => {
             const id = req.params.id;
-            // console.log(id);
-            const query = { _id: ObjectId(id) };
+            const objectId = parseObjectId(id);
+            if (!objectId) {
+                return res.status(400).send({ message: 'invalid id' });
+            }
+            const query = { _id: objectId };
             const booking = await bookingsCollection.findOne(query);
+            if (!booking) {
+                return res.status(404).send({ message: 'booking not found' });
+            }
+            if (booking.email !== req.decoded.email) {
+                return res.status(403).send({ message: 'forbidden access' });
+            }
             res.send(booking);
         });
 
-        app.post('/create-payment-intent', async (req, res) => {
+        app.post('/create-payment-intent', verifyJWT, async (req, res) => {
             const payment = req.body;
-            const price = payment.price;
-            const amount = price * 100;
+            const price = Number(payment.price);
+            if (!Number.isFinite(price) || price <= 0) {
+                return res.status(400).send({ message: 'invalid price' });
+            }
+            const amount = Math.round(price * 100);
 
             const paymentIntent = await stripe.paymentIntents.create({
                 currency: 'usd',
@@ -252,11 +326,18 @@ async function run() {
             });
         });
 
-        app.post('/payments', async (req, res) => {
+        app.post('/payments', verifyJWT, async (req, res) => {
             const payment = req.body;
+            if (!payment?.email || payment.email !== req.decoded.email) {
+                return res.status(403).send({ message: 'forbidden access' });
+            }
+            const bookingId = parseObjectId(payment.bookingId);
+            const productId = parseObjectId(payment.productId);
+            if (!bookingId || !productId) {
+                return res.status(400).send({ message: 'invalid booking/product id' });
+            }
             const result = await paymentCollection.insertOne(payment);
-            const id = payment.bookingId;
-            const filter = { _id: ObjectId(id) };
+            const filter = { _id: bookingId };
             const updatedDoc = {
                 $set: {
                     paid: true,
@@ -268,8 +349,7 @@ async function run() {
                 updatedDoc,
             );
 
-            const productId = req.body.productId;
-            const query = { _id: ObjectId(productId) };
+            const query = { _id: productId };
             const updatedProduct = {
                 $set: {
                     status: 'sold',
@@ -281,20 +361,47 @@ async function run() {
                 updatedProduct,
             );
 
-            res.send(result, updatedProductResult, updatedResult);
+            res.send({
+                acknowledged: result.acknowledged,
+                paymentId: result.insertedId,
+                bookingUpdated: updatedResult.modifiedCount > 0,
+                productUpdated: updatedProductResult.modifiedCount > 0,
+            });
         });
 
         // ================
-        app.delete('/bookings/:id', async (req, res) => {
+        app.delete('/bookings/:id', verifyJWT, async (req, res) => {
             const id = req.params.id;
-            const query = { _id: ObjectId(id) };
+            const objectId = parseObjectId(id);
+            if (!objectId) {
+                return res.status(400).send({ message: 'invalid id' });
+            }
+            const query = { _id: objectId };
+            const booking = await bookingsCollection.findOne(query);
+            if (!booking) {
+                return res.status(404).send({ message: 'booking not found' });
+            }
+            if (booking.email !== req.decoded.email) {
+                return res.status(403).send({ message: 'forbidden access' });
+            }
             const result = await bookingsCollection.deleteOne(query);
             res.send(result);
         });
 
-        app.delete('/products/:id', async (req, res) => {
+        app.delete('/products/:id', verifyJWT, async (req, res) => {
             const id = req.params.id;
-            const query = { _id: ObjectId(id) };
+            const objectId = parseObjectId(id);
+            if (!objectId) {
+                return res.status(400).send({ message: 'invalid id' });
+            }
+            const query = { _id: objectId };
+            const product = await productsCollection.findOne(query);
+            if (!product) {
+                return res.status(404).send({ message: 'product not found' });
+            }
+            if (product.email !== req.decoded.email) {
+                return res.status(403).send({ message: 'forbidden access' });
+            }
             const result = await productsCollection.deleteOne(query);
             res.send(result);
         });
@@ -305,9 +412,13 @@ async function run() {
             res.send(result);
         });
 
-        app.delete('/buyers/:id', async (req, res) => {
+        app.delete('/buyers/:id', verifyJWT, async (req, res) => {
             const id = req.params.id;
-            const query = { _id: ObjectId(id) };
+            const objectId = parseObjectId(id);
+            if (!objectId) {
+                return res.status(400).send({ message: 'invalid id' });
+            }
+            const query = { _id: objectId };
             const result = await usersCollection.deleteOne(query);
             res.send(result);
         });
@@ -317,9 +428,13 @@ async function run() {
             res.send(result);
         });
 
-        app.delete('/sellers/:id', async (req, res) => {
+        app.delete('/sellers/:id', verifyJWT, async (req, res) => {
             const id = req.params.id;
-            const query = { _id: ObjectId(id) };
+            const objectId = parseObjectId(id);
+            if (!objectId) {
+                return res.status(400).send({ message: 'invalid id' });
+            }
+            const query = { _id: objectId };
             const result = await usersCollection.deleteOne(query);
             res.send(result);
         });
@@ -329,9 +444,38 @@ async function run() {
             res.send(result);
         });
 
-        app.delete('/allProducts/:id', async (req, res) => {
+        // public product listing for marketplace page
+        app.get('/products-public', async (req, res) => {
+            const result = await productsCollection
+                .find({})
+                .sort({ _id: -1 })
+                .toArray();
+            res.send(result);
+        });
+
+        // single product for product view page
+        app.get('/products-public/:id', async (req, res) => {
             const id = req.params.id;
-            const query = { _id: ObjectId(id) };
+            const objectId = parseObjectId(id);
+            if (!objectId) {
+                return res.status(400).send({ message: 'invalid product id' });
+            }
+            const result = await productsCollection.findOne({
+                _id: objectId,
+            });
+            if (!result) {
+                return res.status(404).send({ message: 'product not found' });
+            }
+            res.send(result);
+        });
+
+        app.delete('/allProducts/:id', verifyJWT, async (req, res) => {
+            const id = req.params.id;
+            const objectId = parseObjectId(id);
+            if (!objectId) {
+                return res.status(400).send({ message: 'invalid id' });
+            }
+            const query = { _id: objectId };
             const result = await productsCollection.deleteOne(query);
             res.send(result);
         });
@@ -343,8 +487,29 @@ async function run() {
 
 run().catch((err) => console.error(err));
 
+app.get('/health', (req, res) => {
+    res.status(200).send({
+        status: 'ok',
+        uptime: process.uptime(),
+        timestamp: new Date().toISOString(),
+    });
+});
+
 app.get('/', (req, res) => {
     res.send('Server is running... in session');
+});
+
+app.use((req, res) => {
+    res.status(404).send({ message: 'route not found' });
+});
+
+app.use((error, req, res, next) => {
+    if (error.message === 'Not allowed by CORS') {
+        return res.status(403).send({ message: 'cors blocked for this origin' });
+    }
+
+    console.error(error);
+    res.status(500).send({ message: 'internal server error' });
 });
 
 app.listen(port, () => {
